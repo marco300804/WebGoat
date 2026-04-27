@@ -90,15 +90,17 @@ public class ProfileUploadRetrieval implements AssignmentEndpoint {
   @GetMapping("/PathTraversal/random-picture")
   @ResponseBody
   public ResponseEntity<?> getProfilePicture(HttpServletRequest request) {
-    var queryParams = request.getQueryString();
-    if (queryParams != null && (queryParams.contains("..") || queryParams.contains("/"))) {
-      return ResponseEntity.badRequest()
-          .body("Illegal characters are not allowed in the query params");
-    }
     try {
       var id = request.getParameter("id");
-      var catPicture =
-          new File(catPicturesDirectory, (id == null ? RandomUtils.nextInt(1, 11) : id) + ".jpg");
+      String filename = (id == null ? String.valueOf(RandomUtils.nextInt(1, 11)) : id) + ".jpg";
+      var catPicture = new File(catPicturesDirectory, filename);
+
+      // VERIFICACIÓN DE SEGURIDAD: Comprobar la ruta canónica para bloquear Path Traversal
+      if (!catPicture.getCanonicalPath().startsWith(catPicturesDirectory.getCanonicalPath())) {
+          log.warn("Path Traversal attempt blocked for input: {}", id);
+          return ResponseEntity.badRequest()
+              .body("Intento de Path Traversal bloqueado.");
+      }
 
       if (catPicture.getName().toLowerCase().contains("path-traversal-secret.jpg")) {
         return ResponseEntity.ok()
@@ -117,7 +119,7 @@ public class ProfileUploadRetrieval implements AssignmentEndpoint {
               StringUtils.arrayToCommaDelimitedString(catPicture.getParentFile().listFiles())
                   .getBytes());
     } catch (IOException | URISyntaxException e) {
-      log.error("Image not found", e);
+      log.error("Image not found or error resolving canonical path", e);
     }
 
     return ResponseEntity.badRequest().build();
